@@ -1909,10 +1909,34 @@ int bt_le_set_auto_conn(bt_addr_le_t *addr,
 #endif /* CONFIG_BT_CENTRAL */
 
 #if defined(CONFIG_BT_PERIPHERAL)
-struct bt_conn *bt_conn_create_slave_le(const bt_addr_le_t *peer,
-					const struct bt_le_adv_param *param)
+struct bt_conn *bt_conn_create_slave_le(const struct bt_le_adv_param *param)
 {
-	return NULL;
+	int err;
+	struct bt_conn *conn;
+
+	/*
+	 * Make lookup to check if there's a connection object in
+	 * CONNECTED state associated with passed peer LE address.
+	 */
+	conn = bt_conn_lookup_state_le(param->peer_addr, BT_CONN_CONNECTED);
+	if (!conn) {
+		conn = bt_conn_add_le(param->peer_addr);
+		if (!conn) {
+			return NULL;
+		}
+		bt_conn_set_state(conn, BT_CONN_CONNECT);
+	} else {
+		return NULL;
+	}
+
+	err = bt_le_adv_start(param, NULL, 0, NULL, 0);
+	if (err) {
+		BT_WARN("Directed advertising could no be started: %d", err);
+		bt_conn_unref(conn);
+		return NULL;
+	}
+
+	return conn;
 }
 #endif /* CONFIG_BT_PERIPHERAL */
 

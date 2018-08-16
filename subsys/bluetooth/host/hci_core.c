@@ -5034,9 +5034,19 @@ static bool valid_adv_param(const struct bt_le_adv_param *param)
 		}
 	}
 
-	if (param->interval_min > param->interval_max ||
-	    param->interval_min < 0x0020 || param->interval_max > 0x4000) {
-		return false;
+	if (param->options & (BT_LE_ADV_OPT_DIR_MODE |
+		BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY)) {
+		if (!param->peer_addr) {
+			return false;
+		}
+	}
+
+	if (!(param->options & BT_LE_ADV_OPT_DIR_MODE)) {
+		if (param->interval_min > param->interval_max ||
+		    param->interval_min < 0x0020 ||
+		    param->interval_max > 0x4000) {
+			return false;
+		}
 	}
 
 	return true;
@@ -5059,54 +5069,58 @@ int bt_le_adv_start(const struct bt_le_adv_param *param,
 	if (atomic_test_bit(bt_dev.flags, BT_DEV_ADVERTISING)) {
 		return -EALREADY;
 	}
+	if (!(param->options & BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY) &&
+	    !(param->options & BT_LE_ADV_OPT_DIR_MODE)) {
+		struct bt_ad d[2] = {};
 
-	d[0].data = ad;
-	d[0].len = ad_len;
+		d[0].data = ad;
+		d[0].len = ad_len;
 
-	err = set_ad(BT_HCI_OP_LE_SET_ADV_DATA, d, 1);
-	if (err) {
-		return err;
-	}
-
-	d[0].data = sd;
-	d[0].len = sd_len;
-
-	if (param->options & BT_LE_ADV_OPT_USE_NAME) {
-		const char *name;
-
-		if (sd) {
-			int i;
-
-			/* Cannot use name if name is already set */
-			for (i = 0; i < sd_len; i++) {
-				if (sd[i].type == BT_DATA_NAME_COMPLETE ||
-				    sd[i].type == BT_DATA_NAME_SHORTENED) {
-					return -EINVAL;
-				}
-			}
-		}
-
-		name = bt_get_name();
-
-		d[1].data = (&(struct bt_data)BT_DATA(BT_DATA_NAME_COMPLETE,
-						      name, strlen(name)));
-		d[1].len = 1;
-	}
-
-	/*
-	 * We need to set SCAN_RSP when enabling advertising type that allows
-	 * for Scan Requests.
-	 *
-	 * If any data was not provided but we enable connectable undirected
-	 * advertising sd needs to be cleared from values set by previous calls.
-	 * Clearing sd is done by calling set_ad() with NULL data and zero len.
-	 * So following condition check is unusual but correct.
-	 */
-	if (d[0].data || d[1].data ||
-	    (param->options & BT_LE_ADV_OPT_CONNECTABLE)) {
-		err = set_ad(BT_HCI_OP_LE_SET_SCAN_RSP_DATA, d, 2);
+		err = set_ad(BT_HCI_OP_LE_SET_ADV_DATA, d, 1);
 		if (err) {
 			return err;
+		}
+
+		d[0].data = sd;
+		d[0].len = sd_len;
+
+		if (param->options & BT_LE_ADV_OPT_USE_NAME) {
+			const char *name;
+
+			if (sd) {
+				int i;
+
+				/* Cannot use name if name is already set */
+				for (i = 0; i < sd_len; i++) {
+					if (sd[i].type == BT_DATA_NAME_COMPLETE ||
+					    sd[i].type == BT_DATA_NAME_SHORTENED) {
+						return -EINVAL;
+					}
+				}
+			}
+
+			name = bt_get_name();
+
+			d[1].data = (&(struct bt_data)BT_DATA(BT_DATA_NAME_COMPLETE,
+							      name, strlen(name)));
+			d[1].len = 1;
+		}
+
+		/*
+		 * We need to set SCAN_RSP when enabling advertising type that allows
+		 * for Scan Requests.
+		 *
+		 * If any data was not provided but we enable connectable undirected
+		 * advertising sd needs to be cleared from values set by previous calls.
+		 * Clearing sd is done by calling set_ad() with NULL data and zero len.
+		 * So following condition check is unusual but correct.
+		 */
+		if (d[0].data || d[1].data ||
+		    (param->options & BT_LE_ADV_OPT_CONNECTABLE)) {
+			err = set_ad(BT_HCI_OP_LE_SET_SCAN_RSP_DATA, d, 2);
+			if (err) {
+				return err;
+			}
 		}
 	}
 
@@ -5148,7 +5162,15 @@ int bt_le_adv_start(const struct bt_le_adv_param *param,
 			set_param.own_addr_type = id_addr->type;
 		}
 
-		set_param.type = BT_LE_ADV_IND;
+		if (param->options & BT_LE_ADV_OPT_DIR_MODE) {
+			set_param.type = BT_LE_ADV_DIRECT_IND;
+			set_param.direct_addr = *param->peer_addr;
+		} else if (param->options & BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY) {
+			set_param.type = BT_LE_ADV_DIRECT_IND_LOW_DUTY;
+			set_param.direct_addr = *param->peer_addr;
+		} else {
+			set_param.type = BT_LE_ADV_IND;
+		}
 	} else {
 		if (param->options & BT_LE_ADV_OPT_USE_IDENTITY) {
 			if (id_addr->type == BT_ADDR_LE_RANDOM) {

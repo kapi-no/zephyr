@@ -271,6 +271,12 @@ enum {
 
 	/* Advertise using GAP device name */
 	BT_LE_ADV_OPT_USE_NAME = BIT(3),
+
+	/* Use low duty directed advertising mode */
+	BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY = BIT(4),
+
+	/* Use high duty directed advertising mode */
+	BT_LE_ADV_OPT_DIR_MODE = BIT(5),
 };
 
 /** LE Advertising Parameters. */
@@ -286,6 +292,9 @@ struct bt_le_adv_param {
 
 	/** Maximum Advertising Interval (N * 0.625) */
 	u16_t interval_max;
+
+	/** Peer address */
+	const bt_addr_le_t *peer_addr;
 };
 
 /** Helper to declare advertising parameters inline
