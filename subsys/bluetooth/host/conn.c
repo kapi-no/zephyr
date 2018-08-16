@@ -1789,6 +1789,10 @@ int bt_conn_disconnect(struct bt_conn *conn, u8_t reason)
 					       NULL);
 		}
 
+		if (IS_ENABLED(CONFIG_BT_PERIPHERAL)) {
+			return bt_le_adv_stop();
+		}
+
 		return 0;
 	case BT_CONN_CONNECTED:
 		return bt_hci_disconnect(conn, reason);
