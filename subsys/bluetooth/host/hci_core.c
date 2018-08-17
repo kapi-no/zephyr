@@ -796,6 +796,14 @@ static void le_enh_conn_complete(struct bt_hci_evt_le_enh_conn_complete *evt)
 
 		conn->err = evt->status;
 
+		/*
+		 * Handle advertising timeout after high duty directed
+		 * advertising.
+		 */
+		if (conn->err == BT_HCI_ERR_ADV_TIMEOUT) {
+			atomic_clear_bit(bt_dev.flags, BT_DEV_ADVERTISING);
+		}
+
 		bt_conn_set_state(conn, BT_CONN_DISCONNECTED);
 
 		/* Drop the reference got by lookup call in CONNECT state.
