@@ -1790,6 +1790,11 @@ int bt_conn_disconnect(struct bt_conn *conn, u8_t reason)
 		}
 
 		if (IS_ENABLED(CONFIG_BT_PERIPHERAL)) {
+			/* User should unref connection object when receiving
+			 * error in connection callback.
+			 */
+			conn->err = reason;
+			bt_conn_set_state(conn, BT_CONN_DISCONNECTED);
 			return bt_le_adv_stop();
 		}
 
