@@ -6208,7 +6208,7 @@ static void mayfly_adv_stop(void *param)
 	pdu_data_rx = (void *)node_rx->pdu_data;
 	radio_le_conn_cmplt = (void *)pdu_data_rx->lldata;
 	memset(radio_le_conn_cmplt, 0x00, sizeof(struct radio_le_conn_cmplt));
-	radio_le_conn_cmplt->status = 0x3c;
+	radio_le_conn_cmplt->status = BT_HCI_ERR_ADV_TIMEOUT;
 
 	/* enqueue connection complete structure into queue */
 	packet_rx_enqueue();
