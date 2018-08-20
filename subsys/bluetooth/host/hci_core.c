@@ -5089,6 +5089,7 @@ int bt_le_adv_start(const struct bt_le_adv_param *param,
 	if (atomic_test_bit(bt_dev.flags, BT_DEV_ADVERTISING)) {
 		return -EALREADY;
 	}
+
 	if (!(param->options & BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY) &&
 	    !(param->options & BT_LE_ADV_OPT_DIR_MODE)) {
 		struct bt_ad d[2] = {};
@@ -5112,8 +5113,10 @@ int bt_le_adv_start(const struct bt_le_adv_param *param,
 
 				/* Cannot use name if name is already set */
 				for (i = 0; i < sd_len; i++) {
-					if (sd[i].type == BT_DATA_NAME_COMPLETE ||
-					    sd[i].type == BT_DATA_NAME_SHORTENED) {
+					if (sd[i].type
+						== BT_DATA_NAME_COMPLETE ||
+					    sd[i].type
+						== BT_DATA_NAME_SHORTENED) {
 						return -EINVAL;
 					}
 				}
@@ -5121,18 +5124,21 @@ int bt_le_adv_start(const struct bt_le_adv_param *param,
 
 			name = bt_get_name();
 
-			d[1].data = (&(struct bt_data)BT_DATA(BT_DATA_NAME_COMPLETE,
-							      name, strlen(name)));
+			d[1].data = (&(struct bt_data)BT_DATA(
+						BT_DATA_NAME_COMPLETE,
+						name, strlen(name)));
 			d[1].len = 1;
 		}
 
 		/*
-		 * We need to set SCAN_RSP when enabling advertising type that allows
-		 * for Scan Requests.
+		 * We need to set SCAN_RSP when enabling advertising type that
+		 *  allows for Scan Requests.
 		 *
-		 * If any data was not provided but we enable connectable undirected
-		 * advertising sd needs to be cleared from values set by previous calls.
-		 * Clearing sd is done by calling set_ad() with NULL data and zero len.
+		 * If any data was not provided but we enable connectable
+		 * undirected advertising sd needs to be cleared from values set
+		 * by previous calls.
+		 * Clearing sd is done by calling set_ad() with NULL data and
+		 * zero len.
 		 * So following condition check is unusual but correct.
 		 */
 		if (d[0].data || d[1].data ||
