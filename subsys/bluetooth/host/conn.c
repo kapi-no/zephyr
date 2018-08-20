@@ -230,6 +230,7 @@ static struct bt_conn *conn_new(void)
 	memset(conn, 0, sizeof(*conn));
 
 	atomic_set(&conn->ref, 1);
+	printk("handle %u ref %u\n", conn->handle, atomic_get(&conn->ref));
 
 	return conn;
 }
@@ -1415,7 +1416,7 @@ void bt_conn_set_state(struct bt_conn *conn, bt_conn_state_t state)
 {
 	bt_conn_state_t old_state;
 
-	BT_DBG("%s -> %s", state2str(conn->state), state2str(state));
+	printk("%s -> %s\n", state2str(conn->state), state2str(state));
 
 	if (conn->state == state) {
 		BT_WARN("no transition");
@@ -1661,7 +1662,7 @@ struct bt_conn *bt_conn_ref(struct bt_conn *conn)
 {
 	atomic_inc(&conn->ref);
 
-	BT_DBG("handle %u ref %u", conn->handle, atomic_get(&conn->ref));
+	printk("handle %u ref %u\n", conn->handle, atomic_get(&conn->ref));
 
 	return conn;
 }
@@ -1670,7 +1671,7 @@ void bt_conn_unref(struct bt_conn *conn)
 {
 	atomic_dec(&conn->ref);
 
-	BT_DBG("handle %u ref %u", conn->handle, atomic_get(&conn->ref));
+	printk("handle %u ref %u\n", conn->handle, atomic_get(&conn->ref));
 }
 
 const bt_addr_le_t *bt_conn_get_dst(const struct bt_conn *conn)
@@ -1936,6 +1937,7 @@ struct bt_conn *bt_conn_create_slave_le(const struct bt_le_adv_param *param)
 		case BT_CONN_CONNECT_DIR_ADV:
 		case BT_CONN_CONNECT:
 		case BT_CONN_CONNECTED:
+			printk("State init\n");
 			return conn;
 		default:
 			bt_conn_unref(conn);
@@ -1945,6 +1947,7 @@ struct bt_conn *bt_conn_create_slave_le(const struct bt_le_adv_param *param)
 
 	conn = bt_conn_add_le(param->peer_addr);
 	if (!conn) {
+		printk("bt_conn_add_le failed\n");
 		return NULL;
 	}
 
@@ -1952,6 +1955,7 @@ struct bt_conn *bt_conn_create_slave_le(const struct bt_le_adv_param *param)
 	if (err) {
 		BT_WARN("Directed advertising could no be started: %d", err);
 		bt_conn_unref(conn);
+		printk("bt_le_adv_start failed: %d\n", err);
 		return NULL;
 	}
 	bt_conn_set_state(conn, BT_CONN_CONNECT_DIR_ADV);
