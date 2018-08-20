@@ -768,6 +768,7 @@ static void update_pending_id(struct bt_keys *keys, void *data)
 static void le_enh_conn_complete(struct bt_hci_evt_le_enh_conn_complete *evt)
 {
 	u16_t handle = sys_le16_to_cpu(evt->handle);
+	u8_t le_states[] = {BT_CONN_CONNECT, BT_CONN_CONNECT_DIR_ADV};
 	bt_addr_le_t peer_addr, id_addr;
 	struct bt_conn *conn;
 	int err;
@@ -789,7 +790,13 @@ static void le_enh_conn_complete(struct bt_hci_evt_le_enh_conn_complete *evt)
 		 *
 		 * Depending on error code address might not be valid anyway.
 		 */
-		conn = bt_conn_lookup_state_le(NULL, BT_CONN_CONNECT);
+		for (u32_t i = 0; i < ARRAY_SIZE(le_states); i++) {
+			conn = bt_conn_lookup_state_le(NULL, le_states[i]);
+			if (conn) {
+				break;
+			}
+		}
+
 		if (!conn) {
 			return;
 		}
@@ -831,7 +838,12 @@ static void le_enh_conn_complete(struct bt_hci_evt_le_enh_conn_complete *evt)
 	 * Make lookup to check if there's a connection object in
 	 * CONNECT state associated with passed peer LE address.
 	 */
-	conn = bt_conn_lookup_state_le(&id_addr, BT_CONN_CONNECT);
+	for (u32_t i = 0; i < ARRAY_SIZE(le_states); i++) {
+		conn = bt_conn_lookup_state_le(NULL, le_states[i]);
+		if (conn) {
+			break;
+		}
+	}
 
 	if (evt->role == BT_CONN_ROLE_SLAVE) {
 		/*

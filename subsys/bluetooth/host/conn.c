@@ -113,6 +113,8 @@ static inline const char *state2str(bt_conn_state_t state)
 		return "disconnected";
 	case BT_CONN_CONNECT_SCAN:
 		return "connect-scan";
+	case BT_CONN_CONNECT_DIR_ADV:
+		return "connect-dir-adv";
 	case BT_CONN_CONNECT:
 		return "connect";
 	case BT_CONN_CONNECTED:
@@ -1493,6 +1495,13 @@ void bt_conn_set_state(struct bt_conn *conn, bt_conn_state_t state)
 			}
 
 			bt_conn_unref(conn);
+		} else if (old_state == BT_CONN_CONNECT_DIR_ADV) {
+			/* this indicate Directed advertising stopped */
+			if (conn->err) {
+				notify_connected(conn);
+			}
+
+			bt_conn_unref(conn);
 		}
 
 		break;
@@ -1770,10 +1779,17 @@ int bt_conn_disconnect(struct bt_conn *conn, u8_t reason)
 
 	switch (conn->state) {
 	case BT_CONN_CONNECT_SCAN:
+	case BT_CONN_CONNECT_DIR_ADV:
 		conn->err = reason;
 		bt_conn_set_state(conn, BT_CONN_DISCONNECTED);
 		if (IS_ENABLED(CONFIG_BT_CENTRAL)) {
 			bt_le_scan_update(false);
+		}
+		if (IS_ENABLED(CONFIG_BT_PERIPHERAL)) {
+			/* User should unref connection object when receiving
+			 * error in connection callback.
+			 */
+			return bt_le_adv_stop();
 		}
 		return 0;
 	case BT_CONN_CONNECT:
@@ -1787,15 +1803,6 @@ int bt_conn_disconnect(struct bt_conn *conn, u8_t reason)
 			k_delayed_work_cancel(&conn->le.update_work);
 			return bt_hci_cmd_send(BT_HCI_OP_LE_CREATE_CONN_CANCEL,
 					       NULL);
-		}
-
-		if (IS_ENABLED(CONFIG_BT_PERIPHERAL)) {
-			/* User should unref connection object when receiving
-			 * error in connection callback.
-			 */
-			conn->err = reason;
-			bt_conn_set_state(conn, BT_CONN_DISCONNECTED);
-			return bt_le_adv_stop();
 		}
 
 		return 0;
@@ -1923,18 +1930,21 @@ struct bt_conn *bt_conn_create_slave_le(const struct bt_le_adv_param *param)
 	int err;
 	struct bt_conn *conn;
 
-	/*
-	 * Make lookup to check if there's a connection object in
-	 * CONNECTED state associated with passed peer LE address.
-	 */
-	conn = bt_conn_lookup_state_le(param->peer_addr, BT_CONN_CONNECTED);
-	if (!conn) {
-		conn = bt_conn_add_le(param->peer_addr);
-		if (!conn) {
+	conn = bt_conn_lookup_addr_le(BT_ID_DEFAULT, param->peer_addr);
+	if (conn) {
+		switch (conn->state) {
+		case BT_CONN_CONNECT_DIR_ADV:
+		case BT_CONN_CONNECT:
+		case BT_CONN_CONNECTED:
+			return conn;
+		default:
+			bt_conn_unref(conn);
 			return NULL;
 		}
-		bt_conn_set_state(conn, BT_CONN_CONNECT);
-	} else {
+	}
+
+	conn = bt_conn_add_le(param->peer_addr);
+	if (!conn) {
 		return NULL;
 	}
 
@@ -1944,6 +1954,7 @@ struct bt_conn *bt_conn_create_slave_le(const struct bt_le_adv_param *param)
 		bt_conn_unref(conn);
 		return NULL;
 	}
+	bt_conn_set_state(conn, BT_CONN_CONNECT_DIR_ADV);
 
 	return conn;
 }
