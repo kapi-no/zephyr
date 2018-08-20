@@ -271,6 +271,12 @@ enum {
 
 	/* Advertise using GAP device name */
 	BT_LE_ADV_OPT_USE_NAME = BIT(3),
+
+	/* Use low duty directed advertising mode */
+	BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY = BIT(4),
+
+	/* Use high duty directed advertising mode */
+	BT_LE_ADV_OPT_DIR_MODE = BIT(5),
 };
 
 /** LE Advertising Parameters. */
@@ -286,6 +292,9 @@ struct bt_le_adv_param {
 
 	/** Maximum Advertising Interval (N * 0.625) */
 	u16_t interval_max;
+
+	/** Peer address */
+	const bt_addr_le_t *peer_addr;
 };
 
 /** Helper to declare advertising parameters inline
@@ -293,29 +302,45 @@ struct bt_le_adv_param {
   * @param _options   Advertising Options
   * @param _int_min   Minimum advertising interval
   * @param _int_max   Maximum advertising interval
+  * @param _peer_addr Peer address, used only for directed advertising mode
   */
-#define BT_LE_ADV_PARAM(_options, _int_min, _int_max) \
+#define BT_LE_ADV_PARAM(_options, _int_min, _int_max, _peer_addr) \
 		(&(struct bt_le_adv_param) { \
 			.options = (_options), \
 			.interval_min = (_int_min), \
 			.interval_max = (_int_max), \
+			.peer_addr = (_peer_addr), \
 		 })
 
 #define BT_LE_ADV_CONN BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONNECTABLE, \
 				       BT_GAP_ADV_FAST_INT_MIN_2, \
-				       BT_GAP_ADV_FAST_INT_MAX_2)
+				       BT_GAP_ADV_FAST_INT_MAX_2, \
+				       NULL)
 
 #define BT_LE_ADV_CONN_NAME BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONNECTABLE | \
 					    BT_LE_ADV_OPT_USE_NAME, \
 					    BT_GAP_ADV_FAST_INT_MIN_2, \
-					    BT_GAP_ADV_FAST_INT_MAX_2)
+					    BT_GAP_ADV_FAST_INT_MAX_2, \
+					    NULL)
+
+
+#define BT_LE_ADV_CONN_DIR_LOW_DUTY(_peer_addr) \
+	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONNECTABLE | BT_LE_ADV_OPT_ONE_TIME | \
+	BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY, BT_GAP_ADV_FAST_INT_MIN_2, \
+	BT_GAP_ADV_FAST_INT_MAX_2, _peer_addr)
+
+#define BT_LE_ADV_CONN_DIR(_peer_addr) \
+	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONNECTABLE | BT_LE_ADV_OPT_ONE_TIME | \
+	BT_LE_ADV_OPT_DIR_MODE, 0, 0, _peer_addr)
+
 
 #define BT_LE_ADV_NCONN BT_LE_ADV_PARAM(0, BT_GAP_ADV_FAST_INT_MIN_2, \
-					BT_GAP_ADV_FAST_INT_MAX_2)
+					BT_GAP_ADV_FAST_INT_MAX_2, NULL)
 
 #define BT_LE_ADV_NCONN_NAME BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_NAME, \
 					     BT_GAP_ADV_FAST_INT_MIN_2, \
-					     BT_GAP_ADV_FAST_INT_MAX_2)
+					     BT_GAP_ADV_FAST_INT_MAX_2, \
+					     NULL)
 
 /** @brief Start advertising
  *
