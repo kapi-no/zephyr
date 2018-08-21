@@ -765,10 +765,27 @@ static void update_pending_id(struct bt_keys *keys, void *data)
 }
 #endif
 
+static struct bt_conn *find_valid_conn(bt_addr_le_t *peer_addr)
+{
+	struct bt_conn *conn;
+	u8_t le_states[] = {BT_CONN_CONNECT, BT_CONN_CONNECT_DIR_ADV};
+
+	/*
+	 * Make lookup to check if there's a connection object in
+	 * CONNECT or DIR_ADV state associated with passed peer LE address.
+	 */
+	for (u32_t i = 0; i < ARRAY_SIZE(le_states); i++) {
+		conn = bt_conn_lookup_state_le(peer_addr, le_states[i]);
+		if (conn) {
+			break;
+		}
+	}
+	return conn;
+}
+
 static void le_enh_conn_complete(struct bt_hci_evt_le_enh_conn_complete *evt)
 {
 	u16_t handle = sys_le16_to_cpu(evt->handle);
-	u8_t le_states[] = {BT_CONN_CONNECT, BT_CONN_CONNECT_DIR_ADV};
 	bt_addr_le_t peer_addr, id_addr;
 	struct bt_conn *conn;
 	int err;
@@ -790,12 +807,7 @@ static void le_enh_conn_complete(struct bt_hci_evt_le_enh_conn_complete *evt)
 		 *
 		 * Depending on error code address might not be valid anyway.
 		 */
-		for (u32_t i = 0; i < ARRAY_SIZE(le_states); i++) {
-			conn = bt_conn_lookup_state_le(NULL, le_states[i]);
-			if (conn) {
-				break;
-			}
-		}
+		conn = find_valid_conn(NULL);
 
 		if (!conn) {
 			return;
@@ -834,16 +846,7 @@ static void le_enh_conn_complete(struct bt_hci_evt_le_enh_conn_complete *evt)
 		bt_addr_le_copy(&peer_addr, &evt->peer_addr);
 	}
 
-	/*
-	 * Make lookup to check if there's a connection object in
-	 * CONNECT state associated with passed peer LE address.
-	 */
-	for (u32_t i = 0; i < ARRAY_SIZE(le_states); i++) {
-		conn = bt_conn_lookup_state_le(NULL, le_states[i]);
-		if (conn) {
-			break;
-		}
-	}
+	conn = find_valid_conn(&id_addr);
 
 	if (evt->role == BT_CONN_ROLE_SLAVE) {
 		/*
@@ -5034,7 +5037,7 @@ bool bt_addr_le_is_bonded(u8_t id, const bt_addr_le_t *addr)
 	}
 }
 
-static bool valid_adv_param(const struct bt_le_adv_param *param)
+static bool valid_adv_param(const struct bt_le_adv_param *param, bool dir_adv)
 {
 	if (param->id >= bt_dev.id_count ||
 	    !bt_addr_le_cmp(&bt_dev.id_addr[param->id], BT_ADDR_LE_ANY)) {
@@ -5054,14 +5057,8 @@ static bool valid_adv_param(const struct bt_le_adv_param *param)
 		}
 	}
 
-	if (param->options & (BT_LE_ADV_OPT_DIR_MODE |
-		BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY)) {
-		if (!param->peer_addr) {
-			return false;
-		}
-	}
-
-	if (!(param->options & BT_LE_ADV_OPT_DIR_MODE)) {
+	if ((param->options & BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY) ||
+	    !dir_adv) {
 		if (param->interval_min > param->interval_max ||
 		    param->interval_min < 0x0020 ||
 		    param->interval_max > 0x4000) {
@@ -5072,17 +5069,32 @@ static bool valid_adv_param(const struct bt_le_adv_param *param)
 	return true;
 }
 
-int bt_le_adv_start(const struct bt_le_adv_param *param,
-		    const struct bt_data *ad, size_t ad_len,
-		    const struct bt_data *sd, size_t sd_len)
+static bool name_is_present_in_adv_data(const struct bt_data *ad, size_t ad_len)
+{
+	int i;
+
+	/* Cannot use name if name is already set */
+	for (i = 0; i < ad_len; i++) {
+		if (ad[i].type
+			== BT_DATA_NAME_COMPLETE ||
+		    ad[i].type
+			== BT_DATA_NAME_SHORTENED) {
+			return true;
+		}
+	}
+	return false;
+}
+
+int adv_start(const struct bt_le_adv_param *param, const struct bt_data *ad,
+	      size_t ad_len, const struct bt_data *sd, size_t sd_len,
+	      const bt_addr_le_t *peer)
 {
 	struct bt_hci_cp_le_set_adv_param set_param;
 	const bt_addr_le_t *id_addr;
 	struct net_buf *buf;
-	struct bt_ad d[2] = {};
 	int err;
 
-	if (!valid_adv_param(param)) {
+	if (!valid_adv_param(param, (peer != NULL))) {
 		return -EINVAL;
 	}
 
@@ -5090,8 +5102,7 @@ int bt_le_adv_start(const struct bt_le_adv_param *param,
 		return -EALREADY;
 	}
 
-	if (!(param->options & BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY) &&
-	    !(param->options & BT_LE_ADV_OPT_DIR_MODE)) {
+	if (peer != NULL) {
 		struct bt_ad d[2] = {};
 
 		d[0].data = ad;
@@ -5109,16 +5120,8 @@ int bt_le_adv_start(const struct bt_le_adv_param *param,
 			const char *name;
 
 			if (sd) {
-				int i;
-
-				/* Cannot use name if name is already set */
-				for (i = 0; i < sd_len; i++) {
-					if (sd[i].type
-						== BT_DATA_NAME_COMPLETE ||
-					    sd[i].type
-						== BT_DATA_NAME_SHORTENED) {
-						return -EINVAL;
-					}
+				if (name_is_present_in_adv_data(sd, sd_len)) {
+					return -EINVAL;
 				}
 			}
 
@@ -5188,12 +5191,13 @@ int bt_le_adv_start(const struct bt_le_adv_param *param,
 			set_param.own_addr_type = id_addr->type;
 		}
 
-		if (param->options & BT_LE_ADV_OPT_DIR_MODE) {
-			set_param.type = BT_LE_ADV_DIRECT_IND;
-			set_param.direct_addr = *param->peer_addr;
-		} else if (param->options & BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY) {
-			set_param.type = BT_LE_ADV_DIRECT_IND_LOW_DUTY;
-			set_param.direct_addr = *param->peer_addr;
+		if (peer != NULL) {
+			if (param->options & BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY) {
+				set_param.type = BT_LE_ADV_DIRECT_IND_LOW_DUTY;
+			} else {
+				set_param.type = BT_LE_ADV_DIRECT_IND;
+			}
+			set_param.direct_addr = *peer;
 		} else {
 			set_param.type = BT_LE_ADV_IND;
 		}
@@ -5246,6 +5250,17 @@ int bt_le_adv_start(const struct bt_le_adv_param *param,
 	}
 
 	return 0;
+}
+
+int bt_le_adv_start(const struct bt_le_adv_param *param,
+		    const struct bt_data *ad, size_t ad_len,
+		    const struct bt_data *sd, size_t sd_len)
+{
+	if (param->options & BT_LE_ADV_OPT_DIR_MODE_LOW_DUTY) {
+		return -EINVAL;
+	}
+
+	return adv_start(param, ad, ad_len, sd, sd_len, NULL);
 }
 
 int bt_le_adv_stop(void)

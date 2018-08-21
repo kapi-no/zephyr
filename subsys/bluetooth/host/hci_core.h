@@ -198,3 +198,7 @@ void bt_id_del(struct bt_keys *keys);
 int bt_setup_id_addr(void);
 
 void bt_dev_show_info(void);
+
+int adv_start(const struct bt_le_adv_param *param, const struct bt_data *ad,
+	      size_t ad_len, const struct bt_data *sd, size_t sd_len,
+	      const bt_addr_le_t *peer);

@@ -227,11 +227,13 @@ int bt_le_set_auto_conn(bt_addr_le_t *addr,
  *
  *  Returns a new reference that the the caller is responsible for managing.
  *
+ *  @param peer  Remote address.
  *  @param param Directed advertising parameters.
  *
  *  @return Valid connection object on success or NULL otherwise.
  */
-struct bt_conn *bt_conn_create_slave_le(const struct bt_le_adv_param *param);
+struct bt_conn *bt_conn_create_slave_le(const bt_addr_le_t *peer,
+					const struct bt_le_adv_param *param);
 
 /** Security level. */
 typedef enum __packed {
