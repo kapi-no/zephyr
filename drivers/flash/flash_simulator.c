@@ -35,8 +35,18 @@
 /* increment a unit "dirty" read counter */
 #define DIRTY_READ_INC(U) (*(&flash_sim_stats.dirty_read_unit0 + (U)) += 1)
 
-/* simulator statistcs */
+#if (defined(CONFIG_STATS) && (CONFIG_FLASH_SIMULATOR_FLASH_SIZE > 40))
+/* Check here as it is imposible to make such a limitation in Kconfig */
+#error You shall not declare more than 40 pages while using statistic
+	/* Limitation above is caused by used UTIL_REPEAT                  */
+	/* Using FLASH_SIMULATOR_FLASH_PAGE_COUNT allows to avoid terrible */
+	/* error logg at the output while this error occurs                */
+	#define FLASH_SIMULATOR_FLASH_PAGE_COUNT 2
+#else
+#define FLASH_SIMULATOR_FLASH_PAGE_COUNT CONFIG_FLASH_SIMULATOR_FLASH_SIZE
+#endif
 
+/* simulator statistcs */
 STATS_SECT_START(flash_sim_stats)
 STATS_SECT_ENTRY32(bytes_read)		/* total bytes read */
 STATS_SECT_ENTRY32(bytes_written)       /* total bytes written */
@@ -49,9 +59,9 @@ STATS_SECT_ENTRY32(flash_erase_calls)   /* calls to flash_erase() */
 STATS_SECT_ENTRY32(flash_erase_time_us) /* time spent in flash_erase() */
 /* -- per-unit statistics -- */
 /* erase cycle count for unit */
-UTIL_EVAL(UTIL_REPEAT(CONFIG_FLASH_SIMULATOR_FLASH_SIZE, STATS_SECT_EC))
+UTIL_EVAL(UTIL_REPEAT(FLASH_SIMULATOR_FLASH_PAGE_COUNT, STATS_SECT_EC))
 /* number of read operations on worn out erase units */
-UTIL_EVAL(UTIL_REPEAT(CONFIG_FLASH_SIMULATOR_FLASH_SIZE, STATS_SECT_DIRTYR))
+UTIL_EVAL(UTIL_REPEAT(FLASH_SIMULATOR_FLASH_PAGE_COUNT, STATS_SECT_DIRTYR))
 STATS_SECT_END;
 
 STATS_SECT_DECL(flash_sim_stats) flash_sim_stats;
@@ -65,8 +75,8 @@ STATS_NAME(flash_sim_stats, flash_write_calls)
 STATS_NAME(flash_sim_stats, flash_write_time_us)
 STATS_NAME(flash_sim_stats, flash_erase_calls)
 STATS_NAME(flash_sim_stats, flash_erase_time_us)
-UTIL_EVAL(UTIL_REPEAT(CONFIG_FLASH_SIMULATOR_FLASH_SIZE, STATS_NAME_EC))
-UTIL_EVAL(UTIL_REPEAT(CONFIG_FLASH_SIMULATOR_FLASH_SIZE, STATS_NAME_DIRTYR))
+UTIL_EVAL(UTIL_REPEAT(FLASH_SIMULATOR_FLASH_PAGE_COUNT, STATS_NAME_EC))
+UTIL_EVAL(UTIL_REPEAT(FLASH_SIMULATOR_FLASH_PAGE_COUNT, STATS_NAME_DIRTYR))
 STATS_NAME_END(flash_sim_stats);
 
 static u8_t mock_flash[FLASH_SIZE];
