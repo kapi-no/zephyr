@@ -1,6 +1,7 @@
 /dts-v1/;
 
 #include <ti/lm3s6965.dtsi>
+#include "../../../dts/common/sim-flash.dtsi"
 
 / {
 	model = "QEMU Cortex-M3";

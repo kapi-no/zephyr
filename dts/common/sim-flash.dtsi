@@ -1,0 +1,11 @@
+/*
+ * Basic Device Tree file for simulated flash entry declaration.
+ */
+
+/ {
+	sim_flash: sim-flash {
+		compatible = "sim-flash";
+
+		label = "FLASH_SIMULATOR";
+	};
+};
