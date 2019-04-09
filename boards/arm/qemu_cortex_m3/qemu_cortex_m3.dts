@@ -15,12 +15,13 @@
 
 	chosen {
 		zephyr,sram = &sram0;
-		zephyr,flash = &flash0;
+		zephyr,flash = &flash_sim0;
 		zephyr,console = &uart0;
 		zephyr,shell-uart = &uart0;
 		zephyr,bt-uart = &uart2;
 		zephyr,uart-pipe = &uart1;
 		zephyr,bt-mon-uart = &uart2;
+		zephyr,code-partition = &slot0_partition;
 	};
 };
 
@@ -69,4 +70,31 @@
 
 &gpio6 {
        status = "ok";
+};
+
+&flash_sim0 {
+	/*
+	 * For more information, see:
+	 * http://docs.zephyrproject.org/latest/guides/dts/index.html#flash-partitions
+	 */
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		slot0_partition: partition@1000 {
+			label = "image-0";
+			reg = <0x00001000 0x00001000>;
+		};
+		slot1_partition: partition@2000 {
+			label = "image-1";
+			reg = <0x00002000 0x00001000>;
+		};
+
+		/* Storage partition will be used by FCB/NFFS/NVS if enabled. */
+		storage_partition: partition@3000 {
+			label = "storage";
+			reg = <0x00003000 0x00001000>;
+		};
+	};
 };
