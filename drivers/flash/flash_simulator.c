@@ -13,6 +13,11 @@
 #include <stats.h>
 #include <string.h>
 
+/* configuration derived from DT */
+#define CONFIG_FLASH_SIMULATOR_BASE_OFFSET DT_FLASH_BASE_ADDRESS
+#define CONFIG_FLASH_SIMULATOR_ERASE_UNIT DT_FLASH_ERASE_BLOCK_SIZE
+#define CONFIG_FLASH_SIMULATOR_PROG_UNIT DT_FLASH_WRITE_BLOCK_SIZE
+
 #if (CONFIG_FLASH_SIMULATOR_ERASE_UNIT % CONFIG_FLASH_SIMULATOR_PROG_UNIT)
 #error "Erase unit must be a multiple of program unit"
 #endif
