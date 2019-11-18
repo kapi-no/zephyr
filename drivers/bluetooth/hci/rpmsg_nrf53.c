@@ -62,6 +62,8 @@ static struct metal_device shm_device = {
 static struct virtqueue *vq[2];
 static struct rpmsg_endpoint ep;
 
+static struct k_work ipm_work;
+
 static unsigned char virtio_get_status(struct virtio_device *vdev)
 {
 	return VIRTIO_CONFIG_STATUS_DRIVER_OK;
@@ -100,10 +102,15 @@ const struct virtio_dispatch dispatch = {
 	.notify = virtio_notify,
 };
 
+static void ipm_callback_process(struct k_work *work)
+{
+	virtqueue_notification(vq[0]);
+}
+
 static void ipm_callback(void *context, u32_t id, volatile void *data)
 {
 	BT_DBG("Got callback of id %u", id);
-	virtqueue_notification(vq[0]);
+	k_work_submit(&ipm_work);
 }
 
 int endpoint_cb(struct rpmsg_endpoint *ept, void *data, size_t len,
@@ -146,6 +153,9 @@ int bt_rpmsg_platform_init(void)
 	static struct rpmsg_virtio_device   rvdev;
 	static struct metal_io_region       *io;
 	static struct metal_device          *device;
+
+	/* Setup IPM workqueue item */
+	k_work_init(&ipm_work, ipm_callback_process);
 
 	/* Libmetal setup */
 	err = metal_init(&metal_params);
@@ -223,11 +233,6 @@ int bt_rpmsg_platform_init(void)
 		BT_ERR("rpmsg_init_vdev failed %d", err);
 		return err;
 	}
-
-	/* Since we are using name service, we need to wait for a response
-	 * from NS setup and than we need to process it
-	 */
-	virtqueue_notification(vq[0]);
 
 	/* Wait til nameservice ep is setup */
 	k_sem_take(&sync_sem, K_FOREVER);
