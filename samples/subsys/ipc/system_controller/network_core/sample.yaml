@@ -1,0 +1,9 @@
+sample:
+  name: IPC test
+  description: IPC test scenario
+tests:
+  test_build:
+    build_only: true
+    build_on_all: true
+    platform_whitelist: nrf5340_dk_nrf5340_cpunet
+    tags: IPCS
