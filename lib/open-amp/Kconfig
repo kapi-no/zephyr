@@ -1,5 +1,6 @@
 #
 # Copyright (c) 2020, STMicroelectronics
+# Copyright (c) 2020, Nordic Semiconductor ASA
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -18,3 +19,49 @@ config OPENAMP_RSC_TABLE_NUM_RPMSG_BUFF
 	help
 	  This option specifies the number of buffer used in a Vring for
 	  interprocessor communication
+
+config OPENAMP_MULTIINSTANCE
+	bool "IPC multi instance library."
+	imply OPENAMP
+	help
+	  Enable multiinstance IPC library.
+
+if OPENAMP_MULTIINSTANCE
+# RPMSG device role.
+choice RPMSG_ROLE
+	prompt "RPMSG device role"
+	default RPMSG_REMOTE
+
+config RPMSG_REMOTE
+	bool "Remote"
+
+config RPMSG_MASTER
+	bool "Master"
+
+endchoice
+
+config IPC_INSTANCES_NO
+    int "Number of IPC instances."
+    default 1
+    help
+      How many instances are to be used.
+
+config IPC_ENDPOINTS_NO
+    int "Total number of used endpoints."
+    default 0
+    help
+      Number of used endpoints.
+
+config IPC_AUTO_SHMEM_ALLOCATE
+    bool "Auto shmem allocation"
+    default false
+    help
+      Auto shared memory allocation for each instance.
+
+config IPC_COPY_NO_BLOCKING
+    bool "No blocking message copy."
+    default false
+    help
+      Enables no-copy mechanism for obtaining IPC messages.
+
+endif # OPENAMP_MULTIINSTANCE
