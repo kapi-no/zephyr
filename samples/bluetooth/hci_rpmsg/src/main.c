@@ -14,12 +14,6 @@
 #include <sys/byteorder.h>
 #include <logging/log.h>
 #include <sys/util.h>
-#include <drivers/ipm.h>
-
-#include <openamp/open_amp.h>
-#include <metal/sys.h>
-#include <metal/device.h>
-#include <metal/alloc.h>
 
 #include <net/buf.h>
 #include <bluetooth/bluetooth.h>
@@ -28,116 +22,29 @@
 #include <bluetooth/buf.h>
 #include <bluetooth/hci_raw.h>
 
-#define LOG_LEVEL LOG_LEVEL_INFO
+#include "multi_instance.h"
+
+#define LOG_LEVEL LOG_LEVEL_DBG
 #define LOG_MODULE_NAME hci_rpmsg
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
-/* Configuration defines */
 #if !DT_HAS_CHOSEN(zephyr_ipc_shm)
 #error "Sample requires definition of shared memory for rpmsg"
 #endif
 
-#define SHM_NODE            DT_CHOSEN(zephyr_ipc_shm)
-#define SHM_BASE_ADDRESS    DT_REG_ADDR(SHM_NODE)
-#define SHM_START_ADDR      (SHM_BASE_ADDRESS + 0x400)
-#define SHM_SIZE            0x7c00
-#define SHM_DEVICE_NAME     "sram0.shm"
-
-BUILD_ASSERT((SHM_START_ADDR + SHM_SIZE - SHM_BASE_ADDRESS)
-		<= DT_REG_SIZE(SHM_NODE),
-	"Allocated size exceeds available shared memory reserved for IPC");
-
-#define VRING_COUNT         2
-#define VRING_TX_ADDRESS    (SHM_START_ADDR + SHM_SIZE - 0x400)
-#define VRING_RX_ADDRESS    (VRING_TX_ADDRESS - 0x400)
-#define VRING_ALIGNMENT     4
-#define VRING_SIZE          16
-
-#define VDEV_STATUS_ADDR    SHM_BASE_ADDRESS
-
-/* End of configuration defines */
-
-static struct device *ipm_tx_handle;
-static struct device *ipm_rx_handle;
-
-static metal_phys_addr_t shm_physmap[] = { SHM_START_ADDR };
-static struct metal_device shm_device = {
-	.name = SHM_DEVICE_NAME,
-	.bus = NULL,
-	.num_regions = 1,
-	.regions = {
-		{
-			.virt       = (void *) SHM_START_ADDR,
-			.physmap    = shm_physmap,
-			.size       = SHM_SIZE,
-			.page_shift = 0xffffffff,
-			.page_mask  = 0xffffffff,
-			.mem_flags  = 0,
-			.ops        = { NULL },
-		},
-	},
-	.node = { NULL },
-	.irq_num = 0,
-	.irq_info = NULL
-};
-
-static struct virtqueue *vq[2];
-static struct rpmsg_endpoint ep;
-
-static struct k_work ipm_work;
-
-static unsigned char virtio_get_status(struct virtio_device *vdev)
-{
-	return sys_read8(VDEV_STATUS_ADDR);
-}
-
-static uint32_t virtio_get_features(struct virtio_device *vdev)
-{
-	return BIT(VIRTIO_RPMSG_F_NS);
-}
-
-static void virtio_set_status(struct virtio_device *vdev, unsigned char status)
-{
-	sys_write8(status, VDEV_STATUS_ADDR);
-}
-
-static void virtio_notify(struct virtqueue *vq)
-{
-	int status;
-
-	status = ipm_send(ipm_tx_handle, 0, 0, NULL, 0);
-	if (status != 0) {
-		LOG_ERR("ipm_send failed to notify: %d", status);
-	}
-}
-
-const struct virtio_dispatch dispatch = {
-	.get_status = virtio_get_status,
-	.set_status = virtio_set_status,
-	.get_features = virtio_get_features,
-	.notify = virtio_notify,
-};
-
-static void ipm_callback_process(struct k_work *work)
-{
-	virtqueue_notification(vq[1]);
-}
-
-static void ipm_callback(struct device *dev, void *context,
-			 uint32_t id, volatile void *data)
-{
-	LOG_INF("Got callback of id %u", id);
-	k_work_submit(&ipm_work);
-}
-
-static void rpmsg_service_unbind(struct rpmsg_endpoint *ep)
-{
-	rpmsg_destroy_ept(ep);
-}
+#define SHM_NODE          DT_CHOSEN(zephyr_ipc_shm)
+#define SHM_START_ADDR    DT_REG_ADDR(SHM_NODE)
+#define VRING_SIZE        16
 
 static K_THREAD_STACK_DEFINE(tx_thread_stack, CONFIG_BT_HCI_TX_STACK_SIZE);
 static struct k_thread tx_thread_data;
 static K_FIFO_DEFINE(tx_queue);
+
+struct ipc_inst_t ipc = { 0 };
+struct ipc_ept_t ep = { 0 };
+
+K_SEM_DEFINE(rx_sem, 0, 1); /**< Semaphore used for TX sync. */
+bool ep_binded = 0; /**< Binded indication of first instance. */
 
 #define HCI_RPMSG_CMD 0x01
 #define HCI_RPMSG_ACL 0x02
@@ -251,6 +158,8 @@ static void tx_thread(void *p1, void *p2, void *p3)
 		if (err) {
 			LOG_ERR("Unable to send (err %d)", err);
 			net_buf_unref(buf);
+		} else {
+			LOG_HEXDUMP_DBG(buf->data, buf->len, "Sending buffer to:");
 		}
 
 		/* Give other threads a chance to run if tx_queue keeps getting
@@ -284,7 +193,7 @@ static int hci_rpmsg_send(struct net_buf *buf)
 	net_buf_push_u8(buf, pkt_indicator);
 
 	LOG_HEXDUMP_DBG(buf->data, buf->len, "Final HCI buffer:");
-	rpmsg_send(&ep, buf->data, buf->len);
+	ipc_send(&ep, buf->data, buf->len);
 
 	net_buf_unref(buf);
 
@@ -298,117 +207,80 @@ void bt_ctlr_assert_handle(char *file, uint32_t line)
 }
 #endif /* CONFIG_BT_CTLR_ASSERT_HANDLER */
 
-int endpoint_cb(struct rpmsg_endpoint *ept, void *data, size_t len, uint32_t src,
-		void *priv)
+static void msg_notification_cb(void *arg)
 {
-	LOG_INF("Received message of %u bytes.", len);
-	hci_rpmsg_rx((uint8_t *) data, len);
+	k_sem_give(&rx_sem);
+}
 
-	return RPMSG_SUCCESS;
+static void ep_handler(ipc_event_t evt, const void *data, size_t len,
+		       void *arg)
+{
+	switch (evt) {
+	case IPC_EVENT_CONNECTED:
+		ep_binded = true;
+		break;
+
+	case IPC_EVENT_DATA:
+		LOG_INF("Received message of %u bytes.", len);
+		hci_rpmsg_rx((uint8_t *) data, len);
+		break;
+
+	default:
+		break;
+	}
+}
+
+const struct ipc_config_t ipc_conf =
+{
+    .ipm_name_rx = "IPM_0",
+    .ipm_name_tx = "IPM_1",
+    .vring_size = VRING_SIZE,
+    .shmem_addr = SHMEM_INST_ADDR_GET(SHM_START_ADDR, VRING_SIZE, 0),
+    .shmem_size = SHMEM_INST_SIZE_GET(VRING_SIZE),
+};
+struct ipc_ept_config_t ept_conf =
+{
+    .ept_no = 0,
+    .cb = ep_handler,
+    .arg = &ep,
+};
+
+void ipc_thread(void * arg1, void * arg2, void * arg3)
+{
+	uint8_t payload[256] = { 0 };
+
+	LOG_INF("RPMsg processing thread has started");
+
+	while (1) {
+		k_sem_take(&rx_sem, K_FOREVER);
+
+		ipc_recv(&ipc, payload);
+		ipc_free(&ipc);
+
+		k_yield();
+	}
 }
 
 static int hci_rpmsg_init(void)
 {
 	int err;
-	struct metal_init_params metal_params = METAL_INIT_DEFAULTS;
 
-	static struct virtio_vring_info   rvrings[2];
-	static struct virtio_device       vdev;
-	static struct rpmsg_device        *rdev;
-	static struct rpmsg_virtio_device rvdev;
-	static struct metal_io_region     *io;
-	static struct metal_device        *device;
-
-	/* Setup IPM workqueue item */
-	k_work_init(&ipm_work, ipm_callback_process);
-
-	/* Libmetal setup */
-	err = metal_init(&metal_params);
-	if (err) {
-		LOG_ERR("metal_init: failed - error code %d", err);
+	/* Initialize IPC instances. */
+	err = ipc_init(&ipc, &ipc_conf, msg_notification_cb, NULL);
+	if (err)
+	{
+		LOG_ERR("IPC: Error during init: %d", err);
 		return err;
 	}
 
-	err = metal_register_generic_device(&shm_device);
+	/* Initialize Endpoints. */
+	err = ipc_ept_init(&ipc, &ep, &ept_conf);
 	if (err) {
-		LOG_ERR("Couldn't register shared memory device: %d", err);
+		LOG_ERR("EP: Error during init: %d", err);
 		return err;
 	}
 
-	err = metal_device_open("generic", SHM_DEVICE_NAME, &device);
-	if (err) {
-		LOG_ERR("metal_device_open failed: %d", err);
-		return err;
-	}
-
-	io = metal_device_io_region(device, 0);
-	if (!io) {
-		LOG_ERR("metal_device_io_region failed to get region");
-		return -ENODEV;
-	}
-
-	/* IPM setup */
-	ipm_tx_handle = device_get_binding("IPM_1");
-	if (!ipm_tx_handle) {
-		LOG_ERR("Could not get TX IPM device handle");
-		return -ENODEV;
-	}
-
-	ipm_rx_handle = device_get_binding("IPM_0");
-	if (!ipm_rx_handle) {
-		LOG_ERR("Could not get RX IPM device handle");
-		return -ENODEV;
-	}
-
-	ipm_register_callback(ipm_rx_handle, ipm_callback, NULL);
-
-	vq[0] = virtqueue_allocate(VRING_SIZE);
-	if (!vq[0]) {
-		LOG_ERR("virtqueue_allocate failed to alloc vq[0]");
-		return -ENOMEM;
-	}
-
-	vq[1] = virtqueue_allocate(VRING_SIZE);
-	if (!vq[1]) {
-		LOG_ERR("virtqueue_allocate failed to alloc vq[1]");
-		return -ENOMEM;
-	}
-
-	rvrings[0].io = io;
-	rvrings[0].info.vaddr = (void *)VRING_TX_ADDRESS;
-	rvrings[0].info.num_descs = VRING_SIZE;
-	rvrings[0].info.align = VRING_ALIGNMENT;
-	rvrings[0].vq = vq[0];
-
-	rvrings[1].io = io;
-	rvrings[1].info.vaddr = (void *)VRING_RX_ADDRESS;
-	rvrings[1].info.num_descs = VRING_SIZE;
-	rvrings[1].info.align = VRING_ALIGNMENT;
-	rvrings[1].vq = vq[1];
-
-	vdev.role = RPMSG_REMOTE;
-	vdev.vrings_num = VRING_COUNT;
-	vdev.func = &dispatch;
-	vdev.vrings_info = &rvrings[0];
-
-	/* setup rvdev */
-	err = rpmsg_init_vdev(&rvdev, &vdev, NULL, io, NULL);
-	if (err) {
-		LOG_ERR("rpmsg_init_vdev failed %d", err);
-		return err;
-	}
-
-	rdev = rpmsg_virtio_get_rpmsg_device(&rvdev);
-
-	err = rpmsg_create_ept(&ep, rdev, "bt_hci", RPMSG_ADDR_ANY,
-				  RPMSG_ADDR_ANY, endpoint_cb,
-				  rpmsg_service_unbind);
-	if (err) {
-		LOG_ERR("rpmsg_create_ept failed %d", err);
-		return err;
-	}
-
-	return err;
+	return 0;
 }
 
 void main(void)
@@ -417,6 +289,8 @@ void main(void)
 
 	/* incoming events and data from the controller */
 	static K_FIFO_DEFINE(rx_queue);
+
+	LOG_INF("Controller RX processing thread has started.");
 
 	/* initialize RPMSG */
 	err = hci_rpmsg_init();
@@ -447,3 +321,5 @@ void main(void)
 		}
 	}
 }
+
+K_THREAD_DEFINE(tid_1, 1024, ipc_thread, NULL, NULL, NULL, 7, 0, 0);

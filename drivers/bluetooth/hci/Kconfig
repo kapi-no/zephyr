@@ -114,7 +114,7 @@ config BT_RPMSG_NRF53
 	select IPM_MSG_CH_0_ENABLE
 	select IPM_MSG_CH_0_TX
 	select IPM_MSG_CH_1_RX
-	select OPENAMP
+	select OPENAMP_MULTIINSTANCE
 	help
 	  Enable RPMsg configuration for nRF53. Two channels of the IPM driver
 	  are used in the HCI driver: channel 0 for TX and channel 1 for RX.
