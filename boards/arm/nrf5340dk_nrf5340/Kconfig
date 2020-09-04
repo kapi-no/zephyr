@@ -20,6 +20,10 @@ config BOARD_ENABLE_DCDC_HV
 	select SOC_DCDC_NRF53X_HV
 	default y
 
+choice RPMSG_ROLE
+	default RPMSG_MASTER if OPENAMP_MULTIINSTANCE
+endchoice
+
 choice BT_HCI_BUS_TYPE
 	default BT_RPMSG if BT
 endchoice
