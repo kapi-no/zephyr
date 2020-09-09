@@ -6,3 +6,8 @@
 
 zephyr_include_directories_ifdef(CONFIG_OPENAMP_MULTIINSTANCE .)
 zephyr_sources_ifdef(CONFIG_OPENAMP_MULTIINSTANCE multi_instance.c)
+
+zephyr_linker_sources_ifdef(CONFIG_OPENAMP_MULTIINSTANCE
+  SECTIONS
+  multi_instance.ld
+)

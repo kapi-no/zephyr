@@ -130,3 +130,5 @@ int bt_rpmsg_platform_send(struct net_buf *buf)
 {
 	return ipc_send(&ep, buf->data, buf->len);
 }
+
+IPC_INST_CONFIG_DEF(bt_hci, "bt_hci");

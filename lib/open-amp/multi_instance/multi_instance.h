@@ -122,6 +122,7 @@ struct ipc_ept_config_t
 /** @brief IPC configuration structure. */
 struct ipc_config_t
 {
+	char *name; /* Name of the configuration. */ 
     const char * ipm_name_tx; /* Name of the TX IPM channel. */
     const char * ipm_name_rx; /* Name of the RX IPM channel. */
     uint8_t      vring_size;  /* Number of used slots in virtqueue. */
@@ -283,6 +284,11 @@ struct ipc_ept_t * ipc_endpoint_get_next_free(void);
 struct ipc_inst_t * ipc_inst_get_next_free(void);
 
 #endif /* CONFIG_IPC_AUTO_SHMEM_ALLOCATE */
+
+#define IPC_INST_CONFIG_DEF(_name, _config_name) \
+	const Z_STRUCT_SECTION_ITERABLE(ipc_config_t, _name##_ipc_config) = { \
+		.name = _config_name, \
+	}
 
 #ifdef __cplusplus
 }

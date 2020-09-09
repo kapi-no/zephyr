@@ -694,3 +694,19 @@ int ipc_recv(struct ipc_inst_t * p_ipm, void * payload)
 
     return 0;
 }
+
+static int ipc_config_verify(struct device *unused)
+{
+	ARG_UNUSED(unused);
+
+	LOG_INF("IPC Configuration verification");
+
+	Z_STRUCT_SECTION_FOREACH(ipc_config_t, ipc_config) {
+		LOG_INF("%s IPC configuration registered", ipc_config->name);
+	}
+	//k_oops();
+
+	return 0;
+}
+
+SYS_INIT(ipc_config_verify, POST_KERNEL, 30);
