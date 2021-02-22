@@ -1824,6 +1824,7 @@ static void smp_pairing_complete(struct bt_smp *smp, uint8_t status)
 	struct bt_conn *conn = smp->chan.chan.conn;
 
 	BT_DBG("status 0x%x", status);
+	printk("Pairing complete\n");
 
 	if (!status) {
 #if defined(CONFIG_BT_BREDR)
@@ -1840,6 +1841,14 @@ static void smp_pairing_complete(struct bt_smp *smp, uint8_t status)
 		bool bond_flag = atomic_test_bit(smp->flags, SMP_FLAG_BOND);
 
 		if (bond_flag) {
+			printk("Storing keys using bt_keys_store()\n");
+			printk("LTK: %02X:%02X:%02X:%02X:%02X:%02X\n",
+				conn->le.keys->ltk.val[0],
+				conn->le.keys->ltk.val[1],
+				conn->le.keys->ltk.val[2],
+				conn->le.keys->ltk.val[3],
+				conn->le.keys->ltk.val[4],
+				conn->le.keys->ltk.val[5]);
 			bt_keys_store(conn->le.keys);
 		}
 
@@ -2779,6 +2788,8 @@ bool bt_smp_request_ltk(struct bt_conn *conn, uint64_t rand, uint16_t ediv, uint
 	struct bt_smp *smp;
 	uint8_t enc_size;
 
+	printk("Requesting LTK from SMP\n");
+
 	smp = smp_chan_get(conn);
 	if (!smp) {
 		return false;
@@ -2792,6 +2803,8 @@ bool bt_smp_request_ltk(struct bt_conn *conn, uint64_t rand, uint16_t ediv, uint
 	    atomic_test_bit(smp->flags, SMP_FLAG_PAIRING) &&
 	    atomic_test_bit(smp->flags, SMP_FLAG_ENC_PENDING)) {
 		enc_size = get_encryption_key_size(smp);
+
+		printk("During pairing...\n");
 
 		/*
 		 * We keep both legacy STK and LE SC LTK in TK.
@@ -2808,6 +2821,8 @@ bool bt_smp_request_ltk(struct bt_conn *conn, uint64_t rand, uint16_t ediv, uint
 	}
 
 	if (!conn->le.keys) {
+		printk("No keys found checking the storage\n");
+
 		conn->le.keys = bt_keys_find(BT_KEYS_LTK_P256, conn->id,
 					     &conn->le.dst);
 		if (!conn->le.keys) {
@@ -2825,6 +2840,14 @@ bool bt_smp_request_ltk(struct bt_conn *conn, uint64_t rand, uint16_t ediv, uint
 			(void)memset(ltk + enc_size, 0,
 				     BT_SMP_MAX_ENC_KEY_SIZE - enc_size);
 		}
+		printk("Copying the LTK\n");
+		printk("LTK: %02X:%02X:%02X:%02X:%02X:%02X\n",
+			ltk[0],
+			ltk[1],
+			ltk[2],
+			ltk[3],
+			ltk[4],
+			ltk[5]);
 
 		atomic_set_bit(smp->flags, SMP_FLAG_ENC_PENDING);
 		return true;

@@ -90,6 +90,7 @@ int bt_keys_store(struct bt_keys *keys);
 #else
 static inline int bt_keys_store(struct bt_keys *keys)
 {
+	printk("Here\n");
 	return 0;
 }
 #endif

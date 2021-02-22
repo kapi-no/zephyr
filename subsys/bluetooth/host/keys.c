@@ -18,7 +18,7 @@
 #include <bluetooth/conn.h>
 #include <bluetooth/hci.h>
 
-#define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_KEYS)
+#define BT_DBG_ENABLED 1
 #define LOG_MODULE_NAME bt_keys
 #include "common/log.h"
 
@@ -284,12 +284,14 @@ int bt_keys_store(struct bt_keys *keys)
 
 	err = settings_save_one(key, keys->storage_start, BT_KEYS_STORAGE_LEN);
 	if (err) {
-		BT_ERR("Failed to save keys (err %d)", err);
+		BT_ERR("Failed to save keys (err %d)\n", err);
 		return err;
 	}
 
-	BT_DBG("Stored keys for %s (%s)", bt_addr_le_str(&keys->addr),
+	BT_INFO("Stored keys for %s (%s)", bt_addr_le_str(&keys->addr),
 	       log_strdup(key));
+	LOG_HEXDUMP_INF(keys->ltk.val, sizeof(keys->ltk.val), "LTK");
+	LOG_HEXDUMP_INF(keys->storage_start, BT_KEYS_STORAGE_LEN, "Keys descriptor");
 
 	return 0;
 }
