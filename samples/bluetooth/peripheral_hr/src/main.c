@@ -22,6 +22,8 @@
 #include <zephyr/bluetooth/services/bas.h>
 #include <zephyr/bluetooth/services/hrs.h>
 
+#include <zephyr/settings/settings.h>
+
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
 	BT_DATA_BYTES(BT_DATA_UUID16_ALL,
@@ -49,9 +51,53 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.disconnected = disconnected,
 };
 
+static int app_bt_id_create(uint8_t id)
+{
+	int ret;
+	bt_addr_le_t addrs[CONFIG_BT_ID_MAX];
+	size_t count = ARRAY_SIZE(addrs);
+
+	/* Check if the new app identity wasn't already created. */
+	bt_id_get(addrs, &count);
+	if (id < count) {
+		return 0;
+	}
+
+	/* Create the new app identity identity. */
+	do {
+		ret = bt_id_create(NULL, NULL);
+		if (ret < 0) {
+			return ret;
+		}
+	} while (ret != id);
+
+	return 0;
+}
+
 static void bt_ready(void)
 {
 	int err;
+	size_t bt_id_count;
+
+	err = settings_load();
+	if (err) {
+		printk("Settings load failed (err: %d)\n", err);
+		return;
+	} else {
+		printk("Settings loaded\n");
+	}
+
+	bt_id_get(NULL, &bt_id_count);
+	printk("Number of BT identities after settings_load: %d\n", bt_id_count);
+
+	err = app_bt_id_create(1);
+	if (err) {
+		printk("Advertising failed to start (err %d)\n", err);
+		return;
+	}
+
+	bt_id_get(NULL, &bt_id_count);
+	printk("Number of BT identities after ID creation: %d\n", bt_id_count);
 
 	printk("Bluetooth initialized\n");
 
